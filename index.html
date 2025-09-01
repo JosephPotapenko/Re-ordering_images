@@ -19,7 +19,7 @@
   header{
     position:sticky; top:0; z-index:20; background:linear-gradient(180deg,var(--panel),#0f141c); border-bottom:1px solid #1f2a3b;
   }
-  .wrap{max-width:1200px; margin:0 auto; padding:16px;}
+  .wrap{max-width:15000px; margin:0 auto; padding:16px;}
   h1{font-size:20px; margin:0 0 8px;}
   .toolbar{display:grid; grid-template-columns:1fr; gap:12px;}
   .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
@@ -42,16 +42,24 @@
   .dropzone input{display:none}
   .dropzone .big{font-size:14px; color:var(--text-dim)}
   
-  main{max-width:1200px; margin:12px auto; padding:0 16px 32px}
+  main{max-width:15000px; margin:12px auto; padding:0 16px 32px}
   .gallery{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px}
-  .tile{position:relative; background:#0f141c; border:1px solid #1f2a3b; border-radius:14px; overflow:hidden; outline:none}
-  .thumb{display:block; width:100%; aspect-ratio:1/1; object-fit:cover; background:#0b1018}
-  .filename{font-size:11px; padding:6px 8px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:var(--text-dim); border-top:1px solid #1a2230; background:#0f141c}
-  .badge{position:absolute; left:6px; top:6px; background:#0b1220cc; color:#cde3ff; border:1px solid #234; padding:3px 6px; border-radius:999px; font-size:11px; backdrop-filter: blur(3px)}
-  .remove{position:absolute; right:6px; top:6px; width:26px; height:26px; border-radius:50%; border:none; background:#ff3344; color:white; display:grid; place-items:center; font-weight:900; cursor:pointer}
+  .tile{position:relative; background:#0f141c; border:1px solid #1f2a3b; border-radius:14px; overflow:hidden; outline:none; display:block}
+  .thumb{display:block; width:100%; height:auto; object-fit:contain; background:#0b1018; max-height:300px; user-select:none; -webkit-user-drag:none}
+  .filename{font-size:11px; padding:6px 8px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:var(--text-dim); border-top:1px solid #1a2230; background:#0f141c; user-select:none; pointer-events:none}
+  .badge{position:absolute; left:6px; top:6px; background:#0b1220cc; color:#cde3ff; border:1px solid #234; padding:3px 6px; border-radius:999px; font-size:11px; backdrop-filter: blur(3px); pointer-events:none; user-select:none}
+  .remove{position:absolute; right:6px; top:6px; width:26px; height:26px; border-radius:50%; border:none; background:#ff3344; color:white; display:flex; align-items:center; justify-content:center; font-weight:900; cursor:pointer; z-index:10; font-size:14px; line-height:1}
   .remove:hover{filter:brightness(1.1)}
   .remove:focus{outline:2px solid #fff3}
-  .drag-handle{position:absolute; left:6px; bottom:6px; font-size:11px; background:#0b1220cc; color:#cde3ff; border:1px dashed #345; padding:2px 6px; border-radius:8px}
+  .drag-handle{position:absolute; left:6px; bottom:6px; font-size:11px; background:#0b1220cc; color:#cde3ff; border:1px dashed #345; padding:2px 6px; border-radius:8px; cursor:grab; user-select:none}
+  .drag-handle:hover{background:#1a2a3f; border-color:#456}
+  .drag-handle:active{cursor:grabbing}
+  
+  /* Native HTML5 drag styles */
+  .tile{cursor:grab; transition: all 0.2s ease}
+  .tile:hover{border-color:#2f405a; transform:scale(1.02)}
+  .tile[draggable="true"]:active{cursor:grabbing}
+  .tile.dragging{opacity:0.5; transform:rotate(2deg) scale(1.05)}
   
   .footer{margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px}
   .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0}
@@ -61,6 +69,15 @@
     .control{width:100%}
     .buttons{width:100%}
     .buttons button{flex:1}
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  }
+  
+  @media (min-width:1400px){
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  }
+  
+  @media (min-width:1800px){
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
   }
 </style>
 </head>
@@ -118,8 +135,7 @@
     </section>
   </main>
 
-  <!-- SortableJS for drag-and-drop reordering -->
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" integrity="sha384-5u2bf6P6b7uN5b3sOe0Cwfy9vQ9T3ya3m3tHfS6H9G8lHoR6Cw3Qy0a2l+g6bQ7U" crossorigin="anonymous"></script>
+  <!-- Native HTML5 drag and drop implementation -->
   <!-- JSZip for zipping downloads -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-x1b6QbVYRqQmJ2Aq2auo1mP5gWb0p6oQXoP3l6w6Ew0mJYH3Xo1uM8w9G2Oq0wE1" crossorigin="anonymous"></script>
 
@@ -243,6 +259,9 @@
       tile.tabIndex = 0;
       tile.setAttribute('role','group');
       tile.setAttribute('aria-label', `Image ${index+1}: ${item.name}`);
+      tile.setAttribute('draggable', 'true');
+      tile.dataset.index = index;
+      tile.dataset.id = id;
 
       const img = document.createElement('img');
       img.className = 'thumb';
@@ -260,7 +279,10 @@
       rm.setAttribute('aria-label','Remove image');
       rm.title = 'Remove';
       rm.innerHTML = '✕';
-      rm.addEventListener('click', ()=> removeItem(id));
+      rm.addEventListener('click', (e)=> {
+        e.stopPropagation();
+        removeItem(id);
+      });
 
       const handle = document.createElement('div');
       handle.className = 'drag-handle';
@@ -274,24 +296,64 @@
       frag.appendChild(tile);
     }
     el.gallery.appendChild(frag);
-    initSortable();
+    enableDragAndDrop();
     updateUndoRedoButtons();
   }
 
-  let sortable;
-  function initSortable(){
-    if(sortable){ sortable.destroy(); }
-    sortable = new Sortable(el.gallery, {
-      animation: 150,
-      handle: '.tile', // whole tile is draggable
-      ghostClass: 'drag-ghost',
-      onEnd: (evt)=>{
-        if(evt.oldIndex === evt.newIndex) return;
-        pushHistory();
-        const newOrder = Array.from(el.gallery.children).map(ch=>ch.id.replace('tile-',''));
-        state.items = newOrder;
-        updateIndices();
-      }
+  function enableDragAndDrop() {
+    const tiles = document.querySelectorAll('.tile');
+    let dragged;
+
+    tiles.forEach(tile => {
+      tile.addEventListener('dragstart', (e) => {
+        dragged = tile;
+        e.dataTransfer.effectAllowed = 'move';
+        tile.style.opacity = '0.5';
+        console.log('Drag started for tile:', tile.dataset.id);
+      });
+
+      tile.addEventListener('dragend', (e) => {
+        tile.style.opacity = '';
+        console.log('Drag ended');
+      });
+
+      tile.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        tile.style.borderColor = '#4da3ff';
+      });
+
+      tile.addEventListener('dragleave', (e) => {
+        tile.style.borderColor = '';
+      });
+
+      tile.addEventListener('drop', (e) => {
+        e.preventDefault();
+        tile.style.borderColor = '';
+        
+        if (dragged && dragged !== tile) {
+          const draggedId = dragged.dataset.id;
+          const targetId = tile.dataset.id;
+          
+          console.log('Dropping', draggedId, 'onto', targetId);
+          
+          // Save current state for undo
+          pushHistory();
+          
+          // Find indices in state.items array
+          const draggedIndex = state.items.findIndex(id => id === draggedId);
+          const targetIndex = state.items.findIndex(id => id === targetId);
+          
+          if (draggedIndex !== -1 && targetIndex !== -1) {
+            // Remove dragged item and insert at target position
+            const movedItem = state.items.splice(draggedIndex, 1)[0];
+            state.items.splice(targetIndex, 0, movedItem);
+            
+            // Re-render gallery
+            renderGallery();
+          }
+        }
+      });
     });
   }
 
