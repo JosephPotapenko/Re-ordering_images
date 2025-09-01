@@ -33,8 +33,8 @@
   .primary:hover{border-color:#3b79d9}
   .success{background:linear-gradient(180deg,#123324,#102a1e); border-color:#107e46}
   .danger{background:linear-gradient(180deg,#3b1111,#2d0d0d); border-color:#7a1d1d}
-  .muted{opacity:.9}
-  .hint{font-size:12px; color:var(--text-dim)}
+  .muted{opacity:.8}
+  .hint{font-size:10px; color:var(--text-dim); line-height:1.6;}
   
   .dropzone{margin-top:12px; background:repeating-linear-gradient(45deg, #141b26 0 10px, #121821 10px 20px);
     border:2px dashed #314159; border-radius:14px; padding:22px; text-align:center}
@@ -45,6 +45,11 @@
   main{max-width:15000px; margin:12px auto; padding:0 16px 32px}
   .gallery{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px}
   .tile{position:relative; background:#0f141c; border:1px solid #1f2a3b; border-radius:14px; overflow:hidden; outline:none; display:block}
+  .tile.selected{border-color:#4da3ff; box-shadow:0 0 0 2px #4da3ff33}
+  .tile.multi-dragging{opacity:0.7; transform:scale(1.05)}
+  .deselect-all{position:absolute; right:6px; bottom:6px; width:20px; height:20px; border-radius:4px; border:none; background:#4da3ff; color:white; display:flex; align-items:center; justify-content:center; font-weight:600; cursor:pointer; z-index:10; font-size:10px; line-height:1; padding:0}
+  .deselect-all:hover{background:#3b79d9}
+  .deselect-all:focus{outline:2px solid #fff3}
   .thumb{display:block; width:100%; height:auto; object-fit:contain; background:#0b1018; max-height:300px; user-select:none; -webkit-user-drag:none}
   .filename{font-size:11px; padding:6px 8px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:var(--text-dim); border-top:1px solid #1a2230; background:#0f141c; user-select:none; pointer-events:none}
   .badge{position:absolute; left:6px; top:6px; background:#0b1220cc; color:#cde3ff; border:1px solid #234; padding:3px 6px; border-radius:999px; font-size:11px; backdrop-filter: blur(3px); pointer-events:none; user-select:none}
@@ -89,14 +94,14 @@
         <div class="controls" role="group" aria-label="Naming controls">
           <div class="control">
             <label for="prefix">Name prefix</label>
-            <input id="prefix" type="text" placeholder="e.g. chapter-" aria-label="Filename prefix" />
+            <input id="prefix" type="text" placeholder="e.g. character" aria-label="Filename prefix" />
           </div>
           <div class="control">
             <label for="start">Start #</label>
             <input id="start" type="number" value="1" min="0" step="1" aria-label="Starting number"/>
           </div>
           <div class="control">
-            <label for="pad">Pad digits</label>
+            <label for="pad">Padding ###</label>
             <input id="pad" type="number" value="3" min="1" max="8" step="1" aria-label="Zero pad digits"/>
           </div>
           <div class="control">
@@ -104,8 +109,8 @@
             <input id="sep" type="text" value="-" maxlength="2" aria-label="Separator between prefix and number"/>
           </div>
           <div class="control">
-            <label for="ext">Keep extension</label>
-            <span class="hint">original (recommended)</span>
+            <label for="ext">Example:</label>
+            <span class="hint">Character-001.png </span>
           </div>
         </div>
         <div class="buttons" role="group" aria-label="Actions">
@@ -119,7 +124,7 @@
         </div>
       </div>
       <div id="drop" class="dropzone" role="button" tabindex="0" aria-label="Dropzone: click or drag files here">
-        <p class="big">Drag & drop up to thousands of images here (150+ supported), or <strong>click to choose</strong>.</p>
+        <p class="big">Drag & drop images here (optimally >200), or <strong>click here to upload</strong>.</p>
         <input id="fileInput" type="file" accept="image/*" multiple aria-label="File picker" />
       </div>
     </div>
@@ -129,7 +134,9 @@
     <section class="wrap">
       <div id="gallery" class="gallery" aria-live="polite"></div>
       <div class="footer">
-        <div class="hint">Tip: drag tiles to reorder. The number badge shows the current sequence. Use Undo/Redo if you make a mistake.</div>
+        <div class="hint">
+          Tip: drag tiles to reorder. Ctrl click to select multiple then drag. The number badge shows the current sequence. Use Undo/Redo (Ctrl Z/Y) if you make a mistake.<br>
+          Individual file download is optimal at 200. Zipped file downloads are optimal at 1000.
         <div class="hint" id="sizeInfo"></div>
       </div>
     </section>
@@ -148,6 +155,7 @@
     undo: [],
     redo: [],
     totalBytes: 0,
+    selectedItems: new Set(), // selected item ids for multi-select
   };
 
   const el = {
@@ -176,26 +184,38 @@
   }
 
   function pushHistory(){
-    // Save a snapshot of order and membership
+    // Save a complete snapshot of current state
     const snap = {
       items: [...state.items],
-      ids: new Set(state.items),
+      byId: new Map(state.byId),
+      totalBytes: state.totalBytes,
+      selectedItems: new Set(state.selectedItems),
     };
     state.undo.push(snap);
-    // Cap history to prevent extreme memory usage
-    if(state.undo.length>500) state.undo.shift();
+    // Cap history to 50 changes
+    if(state.undo.length > 50) state.undo.shift();
     // Clear redo on new action
     state.redo.length = 0;
     updateUndoRedoButtons();
   }
 
   function restoreSnapshot(snap){
-    // Remove tiles not in snap
-    const toRemove = state.items.filter(id=>!snap.ids.has(id));
-    for(const id of toRemove){ removeItem(id, {skipHistory:true}); }
-    // Add back any missing from snap (shouldn't happen here because we keep byId)
+    // Clean up old object URLs before restoring
+    for(const id of state.items) {
+      if(!snap.byId.has(id)) {
+        const item = state.byId.get(id);
+        if(item && item.url) URL.revokeObjectURL(item.url);
+      }
+    }
+    
+    // Restore complete state
     state.items = [...snap.items];
+    state.byId = new Map(snap.byId);
+    state.totalBytes = snap.totalBytes;
+    state.selectedItems = new Set(snap.selectedItems);
+    
     renderGallery();
+    updateUndoRedoButtons();
   }
 
   function updateUndoRedoButtons(){
@@ -234,6 +254,7 @@
     if(!opts.skipHistory) pushHistory();
     state.items = state.items.filter(x=>x!==id);
     state.byId.delete(id);
+    state.selectedItems.delete(id);
     URL.revokeObjectURL(item.url);
     state.totalBytes -= item.file.size || 0;
     const tile = document.getElementById(`tile-${id}`);
@@ -251,6 +272,7 @@
     }
     state.items = [];
     state.byId.clear();
+    state.selectedItems.clear();
     state.totalBytes = 0;
     renderGallery();
   }
@@ -259,11 +281,15 @@
     // Efficient render: build fragment
     el.gallery.innerHTML = '';
     const frag = document.createDocumentFragment();
+    const selectedArray = Array.from(state.selectedItems);
+    const firstSelectedId = selectedArray.length > 0 ? selectedArray[0] : null;
+    
     for(const [index, id] of state.items.entries()){
       const item = state.byId.get(id);
       if(!item) continue;
       const tile = document.createElement('div');
       tile.className = 'tile';
+      if(state.selectedItems.has(id)) tile.classList.add('selected');
       tile.id = `tile-${id}`;
       tile.tabIndex = 0;
       tile.setAttribute('role','group');
@@ -301,6 +327,44 @@
       fn.className = 'filename';
       fn.textContent = item.name;
 
+      // Add deselect all button only to the first selected item
+      if(id === firstSelectedId && selectedArray.length > 1) {
+        const deselectBtn = document.createElement('button');
+        deselectBtn.className = 'deselect-all';
+        deselectBtn.type = 'button';
+        deselectBtn.setAttribute('aria-label','Deselect all');
+        deselectBtn.title = 'Deselect all';
+        deselectBtn.innerHTML = '✓';
+        deselectBtn.addEventListener('click', (e)=> {
+          e.stopPropagation();
+          state.selectedItems.clear();
+          document.querySelectorAll('.tile.selected').forEach(t => t.classList.remove('selected'));
+          renderGallery(); // Re-render to remove deselect buttons
+        });
+        tile.appendChild(deselectBtn);
+      }
+
+      // Add click handler for selection
+      tile.addEventListener('click', (e) => {
+        if(e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if(state.selectedItems.has(id)) {
+            state.selectedItems.delete(id);
+            tile.classList.remove('selected');
+          } else {
+            state.selectedItems.add(id);
+            tile.classList.add('selected');
+          }
+          // Re-render to update deselect button placement
+          renderGallery();
+        } else {
+          // Clear selection if not holding Ctrl
+          state.selectedItems.clear();
+          document.querySelectorAll('.tile.selected').forEach(t => t.classList.remove('selected'));
+          renderGallery();
+        }
+      });
+
       tile.append(img, badge, rm, handle, fn);
       frag.appendChild(tile);
     }
@@ -312,17 +376,50 @@
   function enableDragAndDrop() {
     const tiles = document.querySelectorAll('.tile');
     let dragged;
+    let draggedItems = [];
+
+    // Enable scroll during drag
+    let isDragging = false;
+    document.addEventListener('dragstart', () => { isDragging = true; });
+    document.addEventListener('dragend', () => { isDragging = false; });
+    
+    // Allow scroll wheel during drag
+    document.addEventListener('wheel', (e) => {
+      if(isDragging) {
+        // Don't prevent default - allow normal scrolling
+        return;
+      }
+    }, { passive: true });
 
     tiles.forEach(tile => {
       tile.addEventListener('dragstart', (e) => {
         dragged = tile;
+        const draggedId = tile.dataset.id;
+        
+        // If dragging a selected item, drag all selected items
+        if(state.selectedItems.has(draggedId) && state.selectedItems.size > 1) {
+          draggedItems = Array.from(state.selectedItems);
+          // Mark all selected items as being dragged
+          state.selectedItems.forEach(id => {
+            const selectedTile = document.getElementById(`tile-${id}`);
+            if(selectedTile) selectedTile.classList.add('multi-dragging');
+          });
+        } else {
+          draggedItems = [draggedId];
+          tile.style.opacity = '0.5';
+        }
+        
         e.dataTransfer.effectAllowed = 'move';
-        tile.style.opacity = '0.5';
-        console.log('Drag started for tile:', tile.dataset.id);
+        e.dataTransfer.setData('text/plain', draggedItems.join(','));
+        console.log('Drag started for items:', draggedItems);
       });
 
       tile.addEventListener('dragend', (e) => {
         tile.style.opacity = '';
+        // Remove multi-dragging class from all tiles
+        document.querySelectorAll('.tile.multi-dragging').forEach(t => {
+          t.classList.remove('multi-dragging');
+        });
         console.log('Drag ended');
       });
 
@@ -340,27 +437,47 @@
         e.preventDefault();
         tile.style.borderColor = '';
         
-        if (dragged && dragged !== tile) {
-          const draggedId = dragged.dataset.id;
+        if (dragged && dragged !== tile && draggedItems.length > 0) {
           const targetId = tile.dataset.id;
-          
-          console.log('Dropping', draggedId, 'onto', targetId);
+          console.log('Dropping items', draggedItems, 'onto', targetId);
           
           // Save current state for undo
           pushHistory();
           
-          // Find indices in state.items array
-          const draggedIndex = state.items.findIndex(id => id === draggedId);
+          // Find target index
           const targetIndex = state.items.findIndex(id => id === targetId);
+          if (targetIndex === -1) return;
           
-          if (draggedIndex !== -1 && targetIndex !== -1) {
-            // Remove dragged item and insert at target position
-            const movedItem = state.items.splice(draggedIndex, 1)[0];
-            state.items.splice(targetIndex, 0, movedItem);
-            
-            // Re-render gallery
-            renderGallery();
+          // Remove all dragged items from their current positions
+          const itemsToMove = [];
+          for(const draggedId of draggedItems) {
+            const index = state.items.findIndex(id => id === draggedId);
+            if(index !== -1) {
+              itemsToMove.push({ id: draggedId, originalIndex: index });
+            }
           }
+          
+          // Sort by original index in reverse order to remove from end first
+          itemsToMove.sort((a, b) => b.originalIndex - a.originalIndex);
+          
+          // Remove items from state.items
+          for(const item of itemsToMove) {
+            state.items.splice(item.originalIndex, 1);
+          }
+          
+          // Find new target index after removals
+          const newTargetIndex = state.items.findIndex(id => id === targetId);
+          if(newTargetIndex === -1) return;
+          
+          // Insert all moved items at the target position
+          // Reverse the order to maintain relative positions
+          const itemIds = itemsToMove.reverse().map(item => item.id);
+          state.items.splice(newTargetIndex, 0, ...itemIds);
+          
+          // Keep selection after move - don't clear selectedItems
+          
+          // Re-render gallery
+          renderGallery();
         }
       });
     });
@@ -384,7 +501,7 @@
     return `${prefix}${sep}${num}${ext}`;
   }
 
-  // Download: individual files with better error handling and progress
+  // Download: individual files with enhanced reliability
   async function downloadIndividually(){
     if(!state.items.length) return;
     
@@ -397,7 +514,8 @@
     const originalText = el.btnDownloadEach.textContent;
     el.btnDownloadEach.disabled = true;
     
-    for(let i=0; i < state.items.length; i++){
+    // Process downloads with retry logic
+    for(let i = 0; i < state.items.length; i++){
       const id = state.items[i];
       const item = state.byId.get(id);
       if(!item) {
@@ -405,37 +523,55 @@
         continue;
       }
       
-      try {
-        const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
-        const name = computeFilename(i, ext);
-        
-        // Create download link
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(item.file);
-        a.download = name;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        
-        // Trigger download
-        a.click();
-        
-        // Clean up
-        setTimeout(() => {
+      let downloadAttempts = 0;
+      const maxAttempts = 3;
+      let downloadSucceeded = false;
+      
+      while(downloadAttempts < maxAttempts && !downloadSucceeded) {
+        try {
+          const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
+          const name = computeFilename(i, ext);
+          
+          // Create fresh blob URL for each attempt
+          const blobUrl = URL.createObjectURL(item.file);
+          
+          // Create download link
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          
+          // Trigger download with verification
+          a.click();
+          
+          // Wait to ensure download starts
+          await new Promise(r => setTimeout(r, 200));
+          
+          // Clean up
           document.body.removeChild(a);
-          URL.revokeObjectURL(a.href);
-        }, 1000);
-        
-        successCount++;
-        
-        // Update progress
-        el.btnDownloadEach.textContent = `Downloading... ${i + 1}/${state.items.length}`;
-        
-        // Longer delay to prevent browser blocking
-        await new Promise(r => setTimeout(r, 150));
-        
-      } catch (error) {
-        console.error(`Failed to download file ${i + 1}:`, error);
-        failCount++;
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+          
+          downloadSucceeded = true;
+          successCount++;
+          
+          // Update progress
+          el.btnDownloadEach.textContent = `Downloading... ${i + 1}/${state.items.length}`;
+          
+          // Delay between successful downloads
+          await new Promise(r => setTimeout(r, 250));
+          
+        } catch (error) {
+          downloadAttempts++;
+          console.error(`Download attempt ${downloadAttempts} failed for file ${i + 1}:`, error);
+          
+          if(downloadAttempts < maxAttempts) {
+            // Wait before retry
+            await new Promise(r => setTimeout(r, 500));
+          } else {
+            failCount++;
+          }
+        }
       }
     }
     
@@ -535,21 +671,45 @@
     }
   }
 
-  // Undo/Redo
+  // Undo/Redo with proper state management
   el.btnUndo.addEventListener('click', ()=>{
     if(!state.undo.length) return;
+    
+    // Save current state to redo stack
+    const currentSnap = {
+      items: [...state.items],
+      byId: new Map(state.byId),
+      totalBytes: state.totalBytes,
+      selectedItems: new Set(state.selectedItems),
+    };
+    state.redo.push(currentSnap);
+    
+    // Cap redo history to 50
+    if(state.redo.length > 50) state.redo.shift();
+    
+    // Restore previous state
     const snap = state.undo.pop();
-    const current = { items:[...state.items] };
-    state.redo.push(current);
     restoreSnapshot(snap);
-    updateUndoRedoButtons();
   });
+
   el.btnRedo.addEventListener('click', ()=>{
     if(!state.redo.length) return;
+    
+    // Save current state to undo stack
+    const currentSnap = {
+      items: [...state.items],
+      byId: new Map(state.byId),
+      totalBytes: state.totalBytes,
+      selectedItems: new Set(state.selectedItems),
+    };
+    state.undo.push(currentSnap);
+    
+    // Cap undo history to 50
+    if(state.undo.length > 50) state.undo.shift();
+    
+    // Restore next state
     const snap = state.redo.pop();
-    state.undo.push({ items:[...state.items] });
     restoreSnapshot(snap);
-    updateUndoRedoButtons();
   });
 
   // Upload handling
@@ -582,11 +742,35 @@
   el.btnDownloadEach.addEventListener('click', downloadIndividually);
   el.btnZip.addEventListener('click', downloadZip);
 
-  // Keyboard accessibility: Delete removes focused tile
+  // Keyboard accessibility: Delete removes focused tile, Escape clears selection, Ctrl+Z/Y for undo/redo
   el.gallery.addEventListener('keydown', (e)=>{
     if((e.key==='Delete' || e.key==='Backspace') && document.activeElement.classList.contains('tile')){
       const id = document.activeElement.id.replace('tile-','');
       removeItem(id);
+    }
+    if(e.key==='Escape') {
+      // Clear selection
+      state.selectedItems.clear();
+      document.querySelectorAll('.tile.selected').forEach(t => t.classList.remove('selected'));
+      renderGallery(); // Re-render to remove deselect buttons
+    }
+  });
+
+  // Global keyboard shortcuts for undo/redo
+  document.addEventListener('keydown', (e) => {
+    // Ctrl+Z for undo
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (state.undo.length > 0) {
+        el.btnUndo.click();
+      }
+    }
+    // Ctrl+Y for redo
+    else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      e.preventDefault();
+      if (state.redo.length > 0) {
+        el.btnRedo.click();
+      }
     }
   });
 
