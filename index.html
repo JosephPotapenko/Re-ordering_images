@@ -1,37 +1,442 @@
-<!-- TO ACHIEVE THIS TYPE IN "!" AND PRESS "TAB" -->
 <!DOCTYPE html>
-<!-- html below is a tag pair. "lang" is a language setting and is set to English. Html has 2 children: head and body -->
 <html lang="en">
-<!-- head below is a tag pair. It contains metadata about the document and links to external resources. -->
 <head>
-    <!-- meta below is a tag pair. It provides metadata about the HTML document. chrset = "UTF-8" is pulling all latin charachters-->
-    <meta charset="UTF-8">
-    <!-- Tag pair. Provides metadata about the HTML document. name = "viewport" is setting the viewport to the device's width and initial scale to 1.0 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Dev Starter</title>
-
-    <!-- Favicons -->
-    <link rel="icon" type="image/png" href="/favicons/favicon-48x48.png" sizes="48x48" />
-    <link rel="icon" type="image/svg+xml" href="/favicons/favicon.svg" />
-    <link rel="shortcut icon" href="/favicons/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-title" content="Web Dev Starter" />
-    <link rel="manifest" href="/favicons/site.webmanifest" />    
-
-    <!-- Stylesheet -->
-    <link rel="stylesheet" href="style.css">
-
-    <!-- JavaScript -->
-     <!-- script:src and then press tab for shortcut-->
-    <script src="script.js" defer> </script>
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bulk Image Organizer — Upload · Reorder · Rename · Download</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --muted:#1a2230; --text:#e8eef6; --text-dim:#a7b3c6; --accent:#4da3ff; --accent-2:#22c55e; --danger:#ef4444; --warning:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; background:var(--bg); color:var(--text);
+  }
+  header{
+    position:sticky; top:0; z-index:20; background:linear-gradient(180deg,var(--panel),#0f141c); border-bottom:1px solid #1f2a3b;
+  }
+  .wrap{max-width:1200px; margin:0 auto; padding:16px;}
+  h1{font-size:20px; margin:0 0 8px;}
+  .toolbar{display:grid; grid-template-columns:1fr; gap:12px;}
+  .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  .control{background:var(--muted); border:1px solid #233044; border-radius:10px; padding:8px 10px; display:flex; align-items:center; gap:8px}
+  .control label{font-size:12px; color:var(--text-dim)}
+  .control input[type="text"], .control input[type="number"]{background:#0d131b; color:var(--text); border:1px solid #223146; padding:6px 8px; border-radius:8px; min-width:80px}
+  .buttons{display:flex; flex-wrap:wrap; gap:8px}
+  button{background:#162132; color:var(--text); border:1px solid #233044; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600}
+  button:hover{border-color:#2f405a}
+  .primary{background:linear-gradient(180deg,#1f3a5f,#1a2f4f); border-color:#2e5ea7}
+  .primary:hover{border-color:#3b79d9}
+  .success{background:linear-gradient(180deg,#123324,#102a1e); border-color:#107e46}
+  .danger{background:linear-gradient(180deg,#3b1111,#2d0d0d); border-color:#7a1d1d}
+  .muted{opacity:.9}
+  .hint{font-size:12px; color:var(--text-dim)}
+  
+  .dropzone{margin-top:12px; background:repeating-linear-gradient(45deg, #141b26 0 10px, #121821 10px 20px);
+    border:2px dashed #314159; border-radius:14px; padding:22px; text-align:center}
+  .dropzone.dragover{border-color:var(--accent)}
+  .dropzone input{display:none}
+  .dropzone .big{font-size:14px; color:var(--text-dim)}
+  
+  main{max-width:1200px; margin:12px auto; padding:0 16px 32px}
+  .gallery{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px}
+  .tile{position:relative; background:#0f141c; border:1px solid #1f2a3b; border-radius:14px; overflow:hidden; outline:none}
+  .thumb{display:block; width:100%; aspect-ratio:1/1; object-fit:cover; background:#0b1018}
+  .filename{font-size:11px; padding:6px 8px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:var(--text-dim); border-top:1px solid #1a2230; background:#0f141c}
+  .badge{position:absolute; left:6px; top:6px; background:#0b1220cc; color:#cde3ff; border:1px solid #234; padding:3px 6px; border-radius:999px; font-size:11px; backdrop-filter: blur(3px)}
+  .remove{position:absolute; right:6px; top:6px; width:26px; height:26px; border-radius:50%; border:none; background:#ff3344; color:white; display:grid; place-items:center; font-weight:900; cursor:pointer}
+  .remove:hover{filter:brightness(1.1)}
+  .remove:focus{outline:2px solid #fff3}
+  .drag-handle{position:absolute; left:6px; bottom:6px; font-size:11px; background:#0b1220cc; color:#cde3ff; border:1px dashed #345; padding:2px 6px; border-radius:8px}
+  
+  .footer{margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px}
+  .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0}
+  
+  @media (max-width:720px){
+    .controls{gap:6px}
+    .control{width:100%}
+    .buttons{width:100%}
+    .buttons button{flex:1}
+  }
+</style>
 </head>
-
-<!-- body below is a tag pair. It contains the content of the document. -->
 <body>
+  <header>
+    <div class="wrap">
+      <h1>Bulk Image Organizer</h1>
+      <div class="toolbar">
+        <div class="controls" role="group" aria-label="Naming controls">
+          <div class="control">
+            <label for="prefix">Name prefix</label>
+            <input id="prefix" type="text" placeholder="e.g. chapter-" aria-label="Filename prefix" />
+          </div>
+          <div class="control">
+            <label for="start">Start #</label>
+            <input id="start" type="number" value="1" min="0" step="1" aria-label="Starting number"/>
+          </div>
+          <div class="control">
+            <label for="pad">Pad digits</label>
+            <input id="pad" type="number" value="3" min="1" max="8" step="1" aria-label="Zero pad digits"/>
+          </div>
+          <div class="control">
+            <label for="sep">Separator</label>
+            <input id="sep" type="text" value="-" maxlength="2" aria-label="Separator between prefix and number"/>
+          </div>
+          <div class="control">
+            <label for="ext">Keep extension</label>
+            <span class="hint">original (recommended)</span>
+          </div>
+        </div>
+        <div class="buttons" role="group" aria-label="Actions">
+          <button id="btnUpload" class="primary" title="Upload images" aria-label="Upload images">Upload Images</button>
+          <button id="btnUndo" class="muted" aria-label="Undo" title="Undo last action">↶ Undo</button>
+          <button id="btnRedo" class="muted" aria-label="Redo" title="Redo last undo">↷ Redo</button>
+          <button id="btnClear" class="danger" aria-label="Clear all" title="Remove all images">Clear All</button>
+          <button id="btnDownloadEach" class="success" aria-label="Download each" title="Download all (individual files)">Download Individually</button>
+          <button id="btnZip" class="success" aria-label="Download zip" title="Download all (ZIP, recommended)">Download as ZIP</button>
+          <span class="hint" id="count">0 images</span>
+        </div>
+      </div>
+      <div id="drop" class="dropzone" role="button" tabindex="0" aria-label="Dropzone: click or drag files here">
+        <p class="big">Drag & drop up to thousands of images here (150+ supported), or <strong>click to choose</strong>.</p>
+        <input id="fileInput" type="file" accept="image/*" multiple aria-label="File picker" />
+      </div>
+    </div>
+  </header>
 
-    <h1>Web Dev Starter</h1>
+  <main>
+    <section class="wrap">
+      <div id="gallery" class="gallery" aria-live="polite"></div>
+      <div class="footer">
+        <div class="hint">Tip: drag tiles to reorder. The number badge shows the current sequence. Use Undo/Redo if you make a mistake.</div>
+        <div class="hint" id="sizeInfo"></div>
+      </div>
+    </section>
+  </main>
 
+  <!-- SortableJS for drag-and-drop reordering -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" integrity="sha384-5u2bf6P6b7uN5b3sOe0Cwfy9vQ9T3ya3m3tHfS6H9G8lHoR6Cw3Qy0a2l+g6bQ7U" crossorigin="anonymous"></script>
+  <!-- JSZip for zipping downloads -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-x1b6QbVYRqQmJ2Aq2auo1mP5gWb0p6oQXoP3l6w6Ew0mJYH3Xo1uM8w9G2Oq0wE1" crossorigin="anonymous"></script>
+
+  <script>
+  // Data model for an item
+  // { id: string, file: File, url: objectURL, name: original name }
+  const state = {
+    items: [],             // ordered array of ids
+    byId: new Map(),       // id -> item
+    undo: [],
+    redo: [],
+    totalBytes: 0,
+  };
+
+  const el = {
+    gallery: document.getElementById('gallery'),
+    drop: document.getElementById('drop'),
+    input: document.getElementById('fileInput'),
+    btnUpload: document.getElementById('btnUpload'),
+    btnUndo: document.getElementById('btnUndo'),
+    btnRedo: document.getElementById('btnRedo'),
+    btnClear: document.getElementById('btnClear'),
+    btnDownloadEach: document.getElementById('btnDownloadEach'),
+    btnZip: document.getElementById('btnZip'),
+    count: document.getElementById('count'),
+    prefix: document.getElementById('prefix'),
+    start: document.getElementById('start'),
+    pad: document.getElementById('pad'),
+    sep: document.getElementById('sep'),
+    sizeInfo: document.getElementById('sizeInfo'),
+  };
+
+  function humanBytes(n){
+    if(!n) return '0 B';
+    const k = 1024; const units = ['B','KB','MB','GB'];
+    const i = Math.floor(Math.log(n)/Math.log(k));
+    return (n/Math.pow(k,i)).toFixed(1)+' '+units[i];
+  }
+
+  function pushHistory(){
+    // Save a snapshot of order and membership
+    const snap = {
+      items: [...state.items],
+      ids: new Set(state.items),
+    };
+    state.undo.push(snap);
+    // Cap history to prevent extreme memory usage
+    if(state.undo.length>500) state.undo.shift();
+    // Clear redo on new action
+    state.redo.length = 0;
+    updateUndoRedoButtons();
+  }
+
+  function restoreSnapshot(snap){
+    // Remove tiles not in snap
+    const toRemove = state.items.filter(id=>!snap.ids.has(id));
+    for(const id of toRemove){ removeItem(id, {skipHistory:true}); }
+    // Add back any missing from snap (shouldn't happen here because we keep byId)
+    state.items = [...snap.items];
+    renderGallery();
+  }
+
+  function updateUndoRedoButtons(){
+    el.btnUndo.disabled = state.undo.length===0;
+    el.btnRedo.disabled = state.redo.length===0;
+    el.count.textContent = `${state.items.length} image${state.items.length===1?'':'s'}`;
+    el.sizeInfo.textContent = state.totalBytes?`Total size: ${humanBytes(state.totalBytes)}`:'';
+  }
+
+  function addFiles(fileList){
+    const files = Array.from(fileList).filter(f=>f && f.type.startsWith('image/'));
+    if(!files.length) return;
+    pushHistory();
+    for(const file of files){
+      const id = crypto.randomUUID();
+      const url = URL.createObjectURL(file);
+      state.byId.set(id, {id, file, url, name:file.name});
+      state.items.push(id);
+      state.totalBytes += file.size;
+    }
+    renderGallery();
+  }
+
+  function removeItem(id, opts={}){
+    const item = state.byId.get(id);
+    if(!item) return;
+    if(!opts.skipHistory) pushHistory();
+    state.items = state.items.filter(x=>x!==id);
+    state.byId.delete(id);
+    URL.revokeObjectURL(item.url);
+    state.totalBytes -= item.file.size || 0;
+    const tile = document.getElementById(`tile-${id}`);
+    if(tile) tile.remove();
+    updateIndices();
+    updateUndoRedoButtons();
+  }
+
+  function clearAll(){
+    if(!state.items.length) return;
+    pushHistory();
+    for(const id of state.items){
+      const {url} = state.byId.get(id);
+      URL.revokeObjectURL(url);
+    }
+    state.items = [];
+    state.byId.clear();
+    state.totalBytes = 0;
+    renderGallery();
+  }
+
+  function renderGallery(){
+    // Efficient render: build fragment
+    el.gallery.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for(const [index, id] of state.items.entries()){
+      const item = state.byId.get(id);
+      if(!item) continue;
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.id = `tile-${id}`;
+      tile.tabIndex = 0;
+      tile.setAttribute('role','group');
+      tile.setAttribute('aria-label', `Image ${index+1}: ${item.name}`);
+
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.src = item.url;
+      img.alt = item.name;
+
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      badge.textContent = String(index+1);
+      badge.setAttribute('aria-hidden','true');
+
+      const rm = document.createElement('button');
+      rm.className = 'remove';
+      rm.type = 'button';
+      rm.setAttribute('aria-label','Remove image');
+      rm.title = 'Remove';
+      rm.innerHTML = '✕';
+      rm.addEventListener('click', ()=> removeItem(id));
+
+      const handle = document.createElement('div');
+      handle.className = 'drag-handle';
+      handle.textContent = '⇅ drag';
+
+      const fn = document.createElement('div');
+      fn.className = 'filename';
+      fn.textContent = item.name;
+
+      tile.append(img, badge, rm, handle, fn);
+      frag.appendChild(tile);
+    }
+    el.gallery.appendChild(frag);
+    initSortable();
+    updateUndoRedoButtons();
+  }
+
+  let sortable;
+  function initSortable(){
+    if(sortable){ sortable.destroy(); }
+    sortable = new Sortable(el.gallery, {
+      animation: 150,
+      handle: '.tile', // whole tile is draggable
+      ghostClass: 'drag-ghost',
+      onEnd: (evt)=>{
+        if(evt.oldIndex === evt.newIndex) return;
+        pushHistory();
+        const newOrder = Array.from(el.gallery.children).map(ch=>ch.id.replace('tile-',''));
+        state.items = newOrder;
+        updateIndices();
+      }
+    });
+  }
+
+  function updateIndices(){
+    Array.from(el.gallery.children).forEach((ch, i)=>{
+      const badge = ch.querySelector('.badge');
+      if(badge) badge.textContent = String(i+1);
+    });
+    updateUndoRedoButtons();
+  }
+
+  // Naming helpers
+  function computeFilename(i, ext){
+    const prefix = el.prefix.value || '';
+    const start = parseInt(el.start.value||'1',10)||0;
+    const pad = Math.min(8, Math.max(1, parseInt(el.pad.value||'3',10)));
+    const sep = el.sep.value ?? '-';
+    const num = String(start + i).padStart(pad,'0');
+    return `${prefix}${sep}${num}${ext}`;
+  }
+
+  // Download: individual files (can be blocked by popup blockers if many)
+  async function downloadIndividually(){
+    if(!state.items.length) return;
+    const startTime = Date.now();
+    for(let i=0;i<state.items.length;i++){
+      const id = state.items[i];
+      const item = state.byId.get(id);
+      if(!item) continue;
+      const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
+      const name = computeFilename(i, ext);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(item.file);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // small delay helps some browsers sequence downloads
+      await new Promise(r=>setTimeout(r, 60));
+    }
+    const elapsed = ((Date.now()-startTime)/1000).toFixed(1);
+    console.log(`Triggered ${state.items.length} downloads in ${elapsed}s`);
+  }
+
+  // Download: ZIP (recommended to ensure none are missed)
+  async function downloadZip(){
+    if(!state.items.length) return;
+    const zip = new JSZip();
+    const folder = zip.folder('images');
+    const tasks = state.items.map((id, i)=>{
+      const item = state.byId.get(id);
+      const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
+      const name = computeFilename(i, ext);
+      return item.file.arrayBuffer().then(buf=> folder.file(name, buf));
+    });
+    await Promise.all(tasks);
+    const blob = await zip.generateAsync({type:'blob'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const zipPrefix = el.prefix.value || 'images';
+    a.download = `${zipPrefix || 'images'}-renamed.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // Undo/Redo
+  el.btnUndo.addEventListener('click', ()=>{
+    if(!state.undo.length) return;
+    const snap = state.undo.pop();
+    const current = { items:[...state.items] };
+    state.redo.push(current);
+    restoreSnapshot(snap);
+    updateUndoRedoButtons();
+  });
+  el.btnRedo.addEventListener('click', ()=>{
+    if(!state.redo.length) return;
+    const snap = state.redo.pop();
+    state.undo.push({ items:[...state.items] });
+    restoreSnapshot(snap);
+    updateUndoRedoButtons();
+  });
+
+  // Upload handling
+  function openPicker(){ el.input.click(); }
+  el.btnUpload.addEventListener('click', openPicker);
+  el.drop.addEventListener('click', (e)=>{
+    if(e.target.id==='fileInput') return; // let native picker work
+    openPicker();
+  });
+  el.input.addEventListener('change', (e)=> addFiles(e.target.files));
+
+  // Drag & drop
+  ;['dragenter','dragover'].forEach(type=> el.drop.addEventListener(type, (e)=>{
+    e.preventDefault(); e.stopPropagation(); el.drop.classList.add('dragover');
+  }));
+  ;['dragleave','drop'].forEach(type=> el.drop.addEventListener(type, (e)=>{
+    e.preventDefault(); e.stopPropagation(); el.drop.classList.remove('dragover');
+  }));
+  el.drop.addEventListener('drop', (e)=>{
+    const files = e.dataTransfer.files;
+    addFiles(files);
+  });
+
+  // Clear all
+  el.btnClear.addEventListener('click', ()=>{
+    if(confirm('Remove all images?')) clearAll();
+  });
+
+  // Downloads
+  el.btnDownloadEach.addEventListener('click', downloadIndividually);
+  el.btnZip.addEventListener('click', downloadZip);
+
+  // Keyboard accessibility: Delete removes focused tile
+  el.gallery.addEventListener('keydown', (e)=>{
+    if((e.key==='Delete' || e.key==='Backspace') && document.activeElement.classList.contains('tile')){
+      const id = document.activeElement.id.replace('tile-','');
+      removeItem(id);
+    }
+  });
+
+  // Persist minimal settings (prefix, pad, start, sep)
+  const loadSettings = () => {
+    try{
+      const s = JSON.parse(localStorage.getItem('bulkImageOrganizerSettings')||'{}');
+      if(s.prefix!==undefined) el.prefix.value = s.prefix;
+      if(s.start!==undefined) el.start.value = s.start;
+      if(s.pad!==undefined) el.pad.value = s.pad;
+      if(s.sep!==undefined) el.sep.value = s.sep;
+    }catch{}
+  };
+  const saveSettings = () => {
+    const s = {prefix:el.prefix.value, start:el.start.value, pad:el.pad.value, sep:el.sep.value};
+    localStorage.setItem('bulkImageOrganizerSettings', JSON.stringify(s));
+  };
+  ['input','change'].forEach(ev=>{
+    el.prefix.addEventListener(ev, saveSettings);
+    el.start.addEventListener(ev, saveSettings);
+    el.pad.addEventListener(ev, saveSettings);
+    el.sep.addEventListener(ev, saveSettings);
+  });
+  loadSettings();
+
+  // Informative: performance hint for huge batches
+  console.log('%cTip','background:#1f2937;color:#93c5fd;padding:4px 6px;border-radius:6px', 'For 150+ images, ZIP download is recommended to avoid popup blockers.');
+  </script>
 </body>
 </html>
-
