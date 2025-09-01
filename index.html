@@ -137,7 +137,7 @@
 
   <!-- Native HTML5 drag and drop implementation -->
   <!-- JSZip for zipping downloads -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-x1b6QbVYRqQmJ2Aq2auo1mP5gWb0p6oQXoP3l6w6Ew0mJYH3Xo1uM8w9G2Oq0wE1" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
   <script>
   // Data model for an item
@@ -208,6 +208,15 @@
   function addFiles(fileList){
     const files = Array.from(fileList).filter(f=>f && f.type.startsWith('image/'));
     if(!files.length) return;
+    
+    // Sort files by filename to maintain order
+    files.sort((a, b) => {
+      return a.name.localeCompare(b.name, undefined, {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
+    
     pushHistory();
     for(const file of files){
       const id = crypto.randomUUID();
@@ -375,49 +384,155 @@
     return `${prefix}${sep}${num}${ext}`;
   }
 
-  // Download: individual files (can be blocked by popup blockers if many)
+  // Download: individual files with better error handling and progress
   async function downloadIndividually(){
     if(!state.items.length) return;
+    
+    console.log(`Starting download of ${state.items.length} files...`);
     const startTime = Date.now();
-    for(let i=0;i<state.items.length;i++){
+    let successCount = 0;
+    let failCount = 0;
+    
+    // Update button to show progress
+    const originalText = el.btnDownloadEach.textContent;
+    el.btnDownloadEach.disabled = true;
+    
+    for(let i=0; i < state.items.length; i++){
       const id = state.items[i];
       const item = state.byId.get(id);
-      if(!item) continue;
-      const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
-      const name = computeFilename(i, ext);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(item.file);
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // small delay helps some browsers sequence downloads
-      await new Promise(r=>setTimeout(r, 60));
+      if(!item) {
+        failCount++;
+        continue;
+      }
+      
+      try {
+        const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
+        const name = computeFilename(i, ext);
+        
+        // Create download link
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(item.file);
+        a.download = name;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        
+        // Trigger download
+        a.click();
+        
+        // Clean up
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }, 1000);
+        
+        successCount++;
+        
+        // Update progress
+        el.btnDownloadEach.textContent = `Downloading... ${i + 1}/${state.items.length}`;
+        
+        // Longer delay to prevent browser blocking
+        await new Promise(r => setTimeout(r, 150));
+        
+      } catch (error) {
+        console.error(`Failed to download file ${i + 1}:`, error);
+        failCount++;
+      }
     }
-    const elapsed = ((Date.now()-startTime)/1000).toFixed(1);
-    console.log(`Triggered ${state.items.length} downloads in ${elapsed}s`);
+    
+    // Restore button
+    el.btnDownloadEach.disabled = false;
+    el.btnDownloadEach.textContent = originalText;
+    
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`Download completed: ${successCount} successful, ${failCount} failed in ${elapsed}s`);
+    
+    if (failCount > 0) {
+      alert(`Download completed with issues: ${successCount} files downloaded successfully, ${failCount} failed. Consider using ZIP download for better reliability.`);
+    } else {
+      console.log(`All ${successCount} files downloaded successfully!`);
+    }
   }
 
-  // Download: ZIP (recommended to ensure none are missed)
+  // Download: ZIP with better error handling and progress
   async function downloadZip(){
     if(!state.items.length) return;
-    const zip = new JSZip();
-    const folder = zip.folder('images');
-    const tasks = state.items.map((id, i)=>{
-      const item = state.byId.get(id);
-      const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
-      const name = computeFilename(i, ext);
-      return item.file.arrayBuffer().then(buf=> folder.file(name, buf));
-    });
-    await Promise.all(tasks);
-    const blob = await zip.generateAsync({type:'blob'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    const zipPrefix = el.prefix.value || 'images';
-    a.download = `${zipPrefix || 'images'}-renamed.zip`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    
+    console.log(`Creating ZIP with ${state.items.length} files...`);
+    const originalText = el.btnZip.textContent;
+    el.btnZip.disabled = true;
+    el.btnZip.textContent = 'Creating ZIP...';
+    
+    try {
+      const zip = new JSZip();
+      let processedCount = 0;
+      
+      // Process files in smaller batches to avoid memory issues
+      const batchSize = 20;
+      for (let i = 0; i < state.items.length; i += batchSize) {
+        const batch = state.items.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (id, batchIndex) => {
+          const globalIndex = i + batchIndex;
+          const item = state.byId.get(id);
+          if (!item) return;
+          
+          try {
+            const ext = item.file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '';
+            const name = computeFilename(globalIndex, ext);
+            const arrayBuffer = await item.file.arrayBuffer();
+            zip.file(name, arrayBuffer);
+            processedCount++;
+            
+            // Update progress
+            el.btnZip.textContent = `Processing... ${processedCount}/${state.items.length}`;
+          } catch (error) {
+            console.error(`Failed to process file ${globalIndex + 1}:`, error);
+          }
+        });
+        
+        await Promise.all(batchPromises);
+        
+        // Small delay between batches
+        if (i + batchSize < state.items.length) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+      
+      console.log(`Processed ${processedCount} files, generating ZIP...`);
+      el.btnZip.textContent = 'Generating ZIP...';
+      
+      // Generate ZIP with compression
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+      
+      // Create download
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const zipPrefix = el.prefix.value || 'images';
+      a.download = `${zipPrefix}-renamed.zip`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      }, 1000);
+      
+      console.log(`ZIP download successful: ${processedCount} files included`);
+      
+    } catch (error) {
+      console.error('ZIP creation failed:', error);
+      alert('Failed to create ZIP file. Please try individual downloads or reduce the number of files.');
+    } finally {
+      // Restore button
+      el.btnZip.disabled = false;
+      el.btnZip.textContent = originalText;
+    }
   }
 
   // Undo/Redo
